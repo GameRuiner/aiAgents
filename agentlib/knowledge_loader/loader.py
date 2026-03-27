@@ -16,4 +16,3 @@ class KnowledgeLoader:
 
     def chunk_by_headers(self, text, level=2):
         return MarkdownProcessor.split_by_header_level(text, level)
-
