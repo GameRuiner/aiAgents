@@ -9,13 +9,14 @@ class KnowledgeBase:
         self.embedding_model = EmbeddingModel()
         self.indexer = None
         self.engine = None
+        self.docs = None
         self.header_level = header_level
 
     def build(self):
-        docs = self.loader.load_repository()
+        self.docs = self.loader.load_repository()
         chunks = []
 
-        for doc in docs:
+        for doc in self.docs:
             meta = doc.copy()
             content = meta.pop("content")
             sections = self.loader.chunk_by_headers(content, level=self.header_level)
@@ -29,6 +30,11 @@ class KnowledgeBase:
         text_index, vector_index = self.indexer.build_indexes(chunks)
 
         self.engine = SearchEngine(text_index, vector_index, self.embedding_model)
+    
+    def get_docs(self) -> str:
+        if self.docs is None:
+            raise RuntimeError("Knowledge base docs not loaded. Call kb.build() first.")
+        return self.docs
 
     def query(self, text: str, num_results=5):
         if not self.engine:
