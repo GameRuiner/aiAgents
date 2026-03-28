@@ -1,6 +1,6 @@
 import streamlit as st
 import asyncio
-from dotenv import load_dotenv
+import os
 
 # Import your custom agent and logging functions
 from agentlib.agents.search_agent import init_agent
@@ -10,9 +10,6 @@ from agentlib.utils.logs import log_interaction_to_file
 REPO_OWNER = "google"
 REPO_NAME = "adk-python"
 
-# Load environment variables
-load_dotenv()
-
 # --- Page Configuration ---
 st.set_page_config(
     page_title="Pydantic AI Search Agent",
@@ -20,8 +17,22 @@ st.set_page_config(
     layout="centered"
 )
 
+# --- API Key Handling ---
+with st.sidebar:
+    st.header("Configuration")
+    api_key = st.text_input("OpenAI API Key", type="password", help="Paste your OpenAI API key here.")
+    
+    if api_key:
+        # Set it as an environment variable so Pydantic AI automatically picks it up
+        os.environ["OPENAI_API_KEY"] = api_key
+
 st.title("🤖 Pydantic AI Search Agent")
 st.caption(f"Querying repository: `{REPO_OWNER}/{REPO_NAME}`")
+
+# Stop execution if the key isn't provided (and isn't in the environment)
+if not os.environ.get("OPENAI_API_KEY"):
+    st.info("👈 Please enter your OpenAI API Key in the sidebar to start.")
+    st.stop()
 
 # --- Session State Initialization ---
 # 1. Initialize the agent only once
@@ -30,9 +41,14 @@ if "agent" not in st.session_state:
         agent, _ = init_agent(REPO_OWNER, REPO_NAME)
         st.session_state.agent = agent
 
-# 2. Initialize chat history for the UI
+# 2. UI chat history (for rendering the Streamlit interface)
 if "messages" not in st.session_state:
     st.session_state.messages = []
+
+# 3. Pydantic AI message history (to give the agent conversation context)
+if "pydantic_messages" not in st.session_state:
+    st.session_state.pydantic_messages = []
+
 
 # --- Chat Interface ---
 # Display previous chat messages from history
@@ -40,32 +56,39 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# Handle new user input
+# --- Chat Interface ---
 if prompt := st.chat_input("Ask a question about the repository..."):
     
-    # Add user message to state and display it
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Generate and display the assistant's response
     with st.chat_message("assistant"):
-        with st.spinner("Thinking..."):
+        response_placeholder = st.empty()
+        
+        async def run_agent_stream():
+            # Initialize the string INSIDE the function to avoid scope issues
+            full_text = ""
             try:
-                # Run the async agent synchronously within Streamlit
-                response = asyncio.run(st.session_state.agent.run(user_prompt=prompt))
-                
-                # Extract the output
-                agent_output = response.output
-                
-                # Display the response
-                st.markdown(agent_output)
-                
-                # Log the interaction just like in the CLI version
-                log_interaction_to_file(st.session_state.agent, response.new_messages())
-                
-                # Add assistant response to state
-                st.session_state.messages.append({"role": "assistant", "content": agent_output})
-                
+                async with st.session_state.agent.run_stream(
+                    prompt, 
+                    message_history=st.session_state.pydantic_messages
+                ) as result:
+                    async for chunk in result.stream_text(delta=True):
+                        full_text += chunk
+                        response_placeholder.markdown(full_text + "▌")
+                    
+                    response_placeholder.markdown(full_text)
+                    
+                    # Update the history in session state
+                    st.session_state.pydantic_messages = result.all_messages()
+                    return full_text # Return the final string
             except Exception as e:
-                st.error(f"An error occurred: {e}")
+                st.error(f"Error: {e}")
+                return None
+
+        # Execute and capture the returned string
+        final_response = asyncio.run(run_agent_stream())
+        
+        if final_response:
+            st.session_state.messages.append({"role": "assistant", "content": final_response})
