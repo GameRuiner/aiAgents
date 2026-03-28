@@ -1,7 +1,7 @@
-from .knowledge_loader.loader import KnowledgeLoader
-from .models.embedding_model import EmbeddingModel
-from .indexing.indexer import Indexer
-from .indexing.search_engine import SearchEngine
+from .loader import KnowledgeLoader
+from ..models.embedding_model import EmbeddingModel
+from ..indexing.indexer import Indexer
+from ..indexing.search_engine import SearchEngine
 
 class KnowledgeBase:
     def __init__(self, owner: str, repo: str, header_level=2):
