@@ -1,4 +1,4 @@
-from agentlib.agents.search_agent import init_agent
+from agentlib.core_agent.search_agent import init_agent
 from agentlib.utils.logs import log_interaction_to_file
 import asyncio
 from dotenv import load_dotenv
